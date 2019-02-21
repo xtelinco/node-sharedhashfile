@@ -15,10 +15,10 @@
     "gypfile": true,
     "repository": {
         "type": "git",
-        "url": ""
+        "url": "https://github.com/xtelinco/node-sharedhashfile.git"
     },
     "bugs": {
-        "url": ""
+        "url": "https://github.com/xtelinco/node-sharedhashfile/issues"
     },
     "dependencies": {
         "bindings": "^1.3.0",
