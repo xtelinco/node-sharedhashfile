@@ -14,7 +14,7 @@
             ],
             'dependencies' : [
                 "<!(node -p \"require('node-addon-api').gyp\")",
-                #"<(module_root_dir)/src/deps/db/simdb.gyp:libsimdb"
+                #"<(module_root_dir)/src/sharedhashfile/binding.gyp:sharedhashfilelib"
             ],
             'libraries': [ '<(module_root_dir)/src/sharedhashfile/release/SharedHashFile.a' ],
             'conditions' : [

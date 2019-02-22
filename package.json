@@ -6,7 +6,8 @@
     "keywords": [],
     "license": "AGPL-3.0-or-later",
     "scripts": {
-        "compile": "node-gyp rebuild",
+        "compile": "make -C src/sharedhashfile && node-gyp rebuild",
+        "install": "make -C src/sharedhashfile && node-gyp rebuild",
         "start": "node main.js"
     },
     "engines": {
