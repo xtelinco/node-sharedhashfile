@@ -91,6 +91,13 @@ SharedHashFile::MakeHash( // todo: warn in docs that ::MakeHash works __thread g
 }
 
 bool
+SharedHashFile::KeyExists (const char * key, uint32_t key_len)
+{
+    MakeHash(key, key_len);
+    return shf_get_key_val_addr( shf ) != NULL;
+}
+
+bool
 SharedHashFile::GetKeyValCopy()
 {
     SHF_DEBUG("%s()\n", __FUNCTION__);
@@ -107,8 +114,10 @@ SharedHashFile::GetUidValCopy(uint32_t uid)
 uint32_t
 SharedHashFile::PutKeyVal(
     const char * val    ,
-    uint32_t     val_len)
+    uint32_t     val_len,
+    uint32_t     expires)
 {
+    shf_set_expires( expires );
     SHF_DEBUG("%s(val=?, val_len=%u)\n", __FUNCTION__, val_len);
     return shf_put_key_val(shf, val, val_len);
 }

@@ -1,7 +1,7 @@
 {
     "name": "sharedhashfile",
     "description": "Bindings for the SharedHashFile Library to the Node.JS world.",
-    "version": "0.0.2",
+    "version": "0.1.0",
     "contributors": [],
     "keywords": [],
     "license": "AGPL-3.0-or-later",

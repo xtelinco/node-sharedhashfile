@@ -35,7 +35,7 @@
 #define SHF_SIZE_ROW            (sizeof(SHF_ROW_MMAP))                                    /*     128  size per row */
 #define SHF_SIZE_TAB            (1<<16)                                                   /*  65,536  size per tab */
 #define SHF_ROWS_PER_TAB        (SHF_SIZE_TAB / SHF_SIZE_ROW)                             /*     512  rows per tab */
-#define SHF_ROWS_PER_TAB_BITS   (9)                                                       /*       9  bits         */
+#define SHF_ROWS_PER_TAB_BITS   (8)                                                       /*       9  bits         */
 #define SHF_REFS_PER_TAB        (SHF_ROWS_PER_TAB * SHF_REFS_PER_ROW)                     /*   8,192  refs per tab */
 #define SHF_TABS_PER_WIN_BITS   (24 - SHF_ROWS_PER_TAB_BITS - SHF_REFS_PER_ROW_BITS)      /*      11  bits         */
 #define SHF_TABS_PER_WIN        (1<<SHF_TABS_PER_WIN_BITS)                                /*   2,048  tabs per win */
@@ -49,6 +49,8 @@ typedef struct SHF_REF_MMAP { // todo: consider optimizing from 4+4 bytes to 3+3
     volatile uint32_t tab :      SHF_TABS_PER_WIN_BITS; /* 11 bits or 2,048 tabs */
     volatile uint32_t rnd : 32 - SHF_TABS_PER_WIN_BITS; /* 21 bits or 2,097,152; /16 is 1 in 131,072 chance */
     volatile uint32_t pos                             ; /* 0 means ref UNused */
+    volatile uint32_t expires                         ; /* Epoch of expiry (zero never expires) */
+    volatile uint32_t pad                             ;
 } __attribute__((packed)) SHF_REF_MMAP;
 
 typedef struct SHF_ROW_MMAP {

@@ -63,6 +63,8 @@ static __thread       uint32_t   shf_val_size                    ; /* mmap() siz
        __thread       char     * shf_val                   = NULL; /* mmap() */
        __thread       uint32_t   shf_val_len                     ;
 
+       __thread       uint32_t   shf_put_expires           = 9   ; /* Put will expire after this many seconds */
+
 static __thread const char     * shf_key                         ; /* used by shf_make_hash() */
 static __thread       uint32_t   shf_key_len                     ; /* used by shf_make_hash() */
 
@@ -180,6 +182,22 @@ shf_get_vfs_available(const char * shf_path)
     SHF_DEBUG("%s(shf_path=%s) // %lu\n", __FUNCTION__, shf_path, vfs_available);
     return vfs_available;
 } /* shf_get_vfs_available() */
+
+uint32_t
+shf_get_monotronic_clock(void)
+{
+    struct timespec tp;
+
+    SHF_ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &tp), "clock_gettime(): %u: ", errno);
+
+    return (uint32_t)tp.tv_sec;
+}
+
+void
+shf_set_expires(uint32_t expires)
+{
+    shf_put_expires = expires;
+}
 
 void
 shf_init(void)
@@ -598,6 +616,7 @@ shf_make_hash(
     tab_mmap_new->row[row].ref[ref].pos = tab_used_new; \
     tab_mmap_new->row[row].ref[ref].tab = tab_mmap_old->row[row].ref[ref].tab; \
     tab_mmap_new->row[row].ref[ref].rnd = tab_mmap_old->row[row].ref[ref].rnd; \
+    tab_mmap_new->row[row].ref[ref].expires = tab_mmap_old->row[row].ref[ref].expires; \
     tab_mmap_new->tab_refs_used ++;
 
 #ifdef SHF_DEBUG_VERSION
@@ -770,11 +789,27 @@ SHF_NEED_NEW_TAB_AFTER_PARTING:;
     SHF_GET_TAB_MMAP(shf, tab);
     SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
 
+    uint32_t now = shf_get_monotronic_clock();
+
     for (uint32_t ref = 0; ref < SHF_REFS_PER_ROW; ref ++) {
-        if (tab_mmap->row[row].ref[ref].pos) {
+        if (tab_mmap->row[row].ref[ref].pos && (!tab_mmap->row[row].ref[ref].expires || tab_mmap->row[row].ref[ref].expires>now) ) {
             /* row used */
         }
         else {
+            if( tab_mmap->row[row].ref[ref].pos ) {
+                /* Then this record has expired so we need to free it up, then we can reuse this ref */
+                uint32_t      pos       ;
+                uint32_t      key_len   ;
+                uint32_t      old_val_len = val_len   ;
+                pos              =  tab_mmap->row[row].ref[ref].pos; SHF_ASSERT(pos < tab_mmap->tab_size, "INTERNAL: expected pos < %u but pos is %u at win %u, tab %u\n", tab_mmap->tab_size, pos, win, tab);
+                if (0 == len_len) { key_len = shf->fixed_key_len         ; val_len =  shf->fixed_val_len                         ; }
+                else              { key_len = SHF_U32_AT(tab_mmap, pos+1); val_len =  SHF_U32_AT(tab_mmap, pos+1+len_len+key_len); }
+                SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
+                SHF_TAB_REF_MARK_AS_DELETED(tab_mmap, len_len);
+                SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
+                val_len = old_val_len;
+            }
+
             uid.as_part.win = win;
             uid.as_part.tab = tab2;
             uid.as_part.row = row;
@@ -786,9 +821,12 @@ SHF_NEED_NEW_TAB_AFTER_PARTING:;
             tab_mmap->row[row].ref[ref].pos = pos;
             tab_mmap->row[row].ref[ref].tab = tab2;
             tab_mmap->row[row].ref[ref].rnd = rnd;
+            tab_mmap->row[row].ref[ref].expires = shf_put_expires ? shf_put_expires + now : 0;
             goto SHF_SKIP_ROW_FULL_CHECK;
         }
     }
+
+    shf_put_expires = 0;
 
     SHF_DEBUG("- row full; parting tab\n");
     SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
@@ -836,8 +874,8 @@ shf_find_key_internal(
     SHF_DATA_TYPE data_type ;
     uint32_t      ref       ;
     uint32_t      pos       ;
-    uint32_t      key_len   ;
-    uint32_t      val_len   ;
+    uint32_t      key_len   =0;
+    uint32_t      val_len   =0;
 
     SHF_ASSERT_INTERNAL(shf, "ERROR: shf must not be NULL; have you called shf_attach(_existing)()?");
 
@@ -867,9 +905,24 @@ shf_find_key_internal(
     SHF_GET_TAB_MMAP(shf, tab);
     SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
 
+    uint32_t now = shf_get_monotronic_clock();
+
     if (SHF_UID_NONE == uid) {
         for (ref = 0; ref < SHF_REFS_PER_ROW; ref ++) { /* search for ref in row */
-            if ((tab_mmap->row[row].ref[ref].pos != 0   ) /* if ref in row is valid looking key... */
+            if(tab_mmap->row[row].ref[ref].pos != 0 &&
+               tab_mmap->row[row].ref[ref].expires &&
+               tab_mmap->row[row].ref[ref].expires<now) {
+
+                pos              =  tab_mmap->row[row].ref[ref].pos; SHF_ASSERT(pos < tab_mmap->tab_size, "INTERNAL: expected pos < %u but pos is %u at win %u, tab %u\n", tab_mmap->tab_size, pos, win, tab);
+                if (0 == len_len) { key_len = shf->fixed_key_len         ; val_len =  shf->fixed_val_len                         ; }
+                else              { key_len = SHF_U32_AT(tab_mmap, pos+1); val_len =  SHF_U32_AT(tab_mmap, pos+1+len_len+key_len); }
+                SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
+                SHF_TAB_REF_MARK_AS_DELETED(tab_mmap, len_len);
+                SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
+            }
+
+            if (!result
+            &&  (tab_mmap->row[row].ref[ref].pos != 0   ) /* if ref in row is valid looking key... */
             &&  (tab_mmap->row[row].ref[ref].rnd == rnd )
             &&  (tab_mmap->row[row].ref[ref].tab == tab2)) {
                 SHF_DEBUG("- todo: use SHF_DATA_TYPE instead of hard coding\n");
@@ -890,6 +943,18 @@ shf_find_key_internal(
     }
     else {
         ref  = tmp_uid.as_part.ref;
+        if(tab_mmap->row[row].ref[ref].pos != 0 &&
+            tab_mmap->row[row].ref[ref].expires &&
+            tab_mmap->row[row].ref[ref].expires<now) {
+
+            pos              =  tab_mmap->row[row].ref[ref].pos; SHF_ASSERT(pos < tab_mmap->tab_size, "INTERNAL: expected pos < %u but pos is %u at win %u, tab %u\n", tab_mmap->tab_size, pos, win, tab);
+            if (0 == len_len) { key_len = shf->fixed_key_len         ; val_len =  shf->fixed_val_len                         ; }
+            else              { key_len = SHF_U32_AT(tab_mmap, pos+1); val_len =  SHF_U32_AT(tab_mmap, pos+1+len_len+key_len); }
+            SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
+            SHF_TAB_REF_MARK_AS_DELETED(tab_mmap, len_len);
+            SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
+        }
+
         if ((tab_mmap->row[row].ref[ref].pos != 0   ) /* if uid points to valid looking ref... */
         &&  (tab_mmap->row[row].ref[ref].tab == tab2)) {
             SHF_DEBUG("- todo: use SHF_DATA_TYPE instead of hard coding\n");
@@ -936,7 +1001,9 @@ shf_find_key_internal(
             shf_upd_callback_failsafe ++;
             SHF_SYSLOG_ASSERT_INTERNAL(1 == shf_upd_callback_failsafe, "ERROR: %s() recursive call detected! shf_upd*() functions should never use themselves recursively!", __FUNCTION__);
             result |= (*shf_upd_callback)(SHF_CAST(char *, shf_val_addr), val_len);
+            tab_mmap->row[row].ref[ref].expires = shf_put_expires ? shf_put_expires + now : 0;
             shf_upd_callback_failsafe --;
+            shf_put_expires = 0;
         }
     }
     if    ((SHF_FIND_KEY_OR_UID              == what)

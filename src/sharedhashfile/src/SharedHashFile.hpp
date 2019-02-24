@@ -38,9 +38,10 @@ public:
     bool       Attach            (const char * path, const char * name, uint32_t delete_upon_process_exit);
     bool       IsAttached        ();
     void       MakeHash          (const char * key, uint32_t key_len);
+    bool       KeyExists         (const char * key, uint32_t key_len);
     bool       GetKeyValCopy     ();
     bool       GetUidValCopy     (uint32_t uid);
-    uint32_t   PutKeyVal         (const char * val, uint32_t val_len);
+    uint32_t   PutKeyVal         (const char * val, uint32_t val_len, uint32_t expires=0);
     bool       DelKeyVal         ();
     bool       DelUidVal         (uint32_t uid);
     int        UpdKeyVal         ();
