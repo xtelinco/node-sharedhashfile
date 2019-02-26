@@ -568,7 +568,7 @@ shf_make_hash(
         /* store key value *without* size data */ \
     } \
     else { \
-        /* store key value *with* size data */ \
+        /* store key value *with* sizesdata */ \
     SHF_U32_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE)                                       )    =    KEY_LEN         ; \
     SHF_U32_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE) + LEN_LEN + KEY_LEN                   )    =    val_len         ; \
     } \
@@ -598,6 +598,7 @@ shf_make_hash(
     TAB_MMAP->tab_data_free += 1 + LEN_LEN + key_len + LEN_LEN + val_len; \
     /* mark ref in old tab as unused */ \
     TAB_MMAP->row[row].ref[ref].pos = 0; \
+    TAB_MMAP->row[row].ref[ref].expires = 0; \
     TAB_MMAP->tab_refs_used --;
 
 #define SHF_TAB_REF_COPY(LEN_LEN) \
