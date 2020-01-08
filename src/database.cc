@@ -31,6 +31,7 @@ Napi::Object Database::Init(Napi::Env env, Napi::Object exports) {
         InstanceMethod("get", &Database::Get),
         InstanceMethod("del", &Database::Del),
         InstanceMethod("put", &Database::Put),
+        InstanceMethod("replace", &Database::Replace),
         InstanceMethod("exists", &Database::Exists)
     });
 
@@ -160,3 +161,26 @@ Napi::Value Database::Put(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(env, this->db.PutKeyVal( val.c_str(), val.size(), expires ) ); 
 }
 
+Napi::Value Database::Replace(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if( !this->db.IsAttached() ) {
+        throw Napi::TypeError::New(env, "Database is not open");
+    }
+    if (info.Length() < 2 || info.Length()>3) {
+        throw Napi::TypeError::New(env, "Wrong number of parameters");
+    }
+    if (!info[0].IsString() || !info[1].IsString()) {
+        throw Napi::TypeError::New(env, "Parameters not a string");
+    }
+    uint32_t expires = 0;
+    if (info.Length() == 3) {
+        if(!info[2].IsNumber()) {
+            throw Napi::TypeError::New(env, "Parameters expires not a number");
+        }
+        expires = info[2].As<Napi::Number>();
+    }
+    std::string key = info[0].As<Napi::String>();
+    std::string val = info[1].As<Napi::String>();
+    db.MakeHash( key.c_str(), key.size() );
+    return Napi::Boolean::New(env, this->db.ReplaceKeyVal( val.c_str(), val.size(), expires ) ); 
+}

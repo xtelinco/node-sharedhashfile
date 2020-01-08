@@ -209,6 +209,8 @@ typedef struct SHF_RW_LOCK {
 #define SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_READER (0x0000000000010000)
 #define SHF_RW_LOCK_INC_TICKET_NEXT               (0x0000000100000000)
 
+#define SPIN_LOCK_BREAK 1000000000
+
 static inline void
 shf_rw_lock_writer(SHF_RW_LOCK * lock)
 {
@@ -219,7 +221,12 @@ shf_rw_lock_writer(SHF_RW_LOCK * lock)
 
     lock->lock.as_u08.pad_ticket_next = 0; /* ensure overflow never gets too big */
 
-    while (ticket_next_pre_inc != lock->lock.as_u08.ticket_active_writer) { SHF_CPU_PAUSE(); spin ++; }
+    while (ticket_next_pre_inc != lock->lock.as_u08.ticket_active_writer && spin!=SPIN_LOCK_BREAK) { SHF_CPU_PAUSE(); spin ++; }
+    if( spin == SPIN_LOCK_BREAK ) {
+        printf("Break spin lock\n");
+         __sync_add_and_fetch_8(&lock->lock.as_u64, SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_WRITER); /* atomic increment ticket_active_writer */
+        lock->lock.as_u08.pad_ticket_active_writer = 0; /* ensure overflow never gets too big */
+    }
 
 #ifdef SHF_DEBUG_VERSION
     if (spin) {
@@ -259,7 +266,13 @@ shf_rw_lock_reader(SHF_RW_LOCK * lock)
 
     lock->lock.as_u08.pad_ticket_next = 0; /* ensure overflow never gets too big */
 
-    while (ticket_next_pre_inc != lock->lock.as_u08.ticket_active_reader)  { SHF_CPU_PAUSE(); spin ++; } /* todo: add pid to identify trouble-maker when spinned for too long */
+    while (ticket_next_pre_inc != lock->lock.as_u08.ticket_active_reader && spin != SPIN_LOCK_BREAK)  { SHF_CPU_PAUSE(); spin ++; } /* todo: add pid to identify trouble-maker when spinned for too long */
+    if( spin == SPIN_LOCK_BREAK ) {
+        printf("Break spin lock\n");
+         __sync_add_and_fetch_8(&lock->lock.as_u64, SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_WRITER); /* atomic increment ticket_active_writer */
+        lock->lock.as_u08.pad_ticket_active_writer = 0; /* ensure overflow never gets too big */
+    }
+
     if (0) {
         lock->lock.as_u08.ticket_active_reader ++; /* so that other readers can read concurrently (if no writer) */
     }

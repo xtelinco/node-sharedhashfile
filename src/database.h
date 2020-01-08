@@ -37,5 +37,6 @@ class Database : public Napi::ObjectWrap<Database> {
         Napi::Value Get(const Napi::CallbackInfo& info);
         Napi::Value Del(const Napi::CallbackInfo& info);
         Napi::Value Put(const Napi::CallbackInfo& info);     
+        Napi::Value Replace(const Napi::CallbackInfo& info);     
         Napi::Value Exists(const Napi::CallbackInfo& info);     
 };

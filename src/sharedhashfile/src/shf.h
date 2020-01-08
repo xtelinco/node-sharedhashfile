@@ -365,6 +365,7 @@ extern SHF      * shf_attach               (const char * path, const char * name
 extern void       shf_make_hash            (const char * key, uint32_t key_len);
 extern uint32_t   shf_put_key_val          (SHF * shf, const char * val, uint32_t val_len);
 extern void       shf_set_expires          (uint32_t expires);
+extern void       shf_replace_instead_of_put(void);
 extern int        shf_get_key_val_copy     (SHF * shf);
 extern int        shf_get_uid_val_copy     (SHF * shf, uint32_t uid);
 extern void     * shf_get_key_val_addr     (SHF * shf);

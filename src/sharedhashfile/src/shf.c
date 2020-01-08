@@ -63,7 +63,8 @@ static __thread       uint32_t   shf_val_size                    ; /* mmap() siz
        __thread       char     * shf_val                   = NULL; /* mmap() */
        __thread       uint32_t   shf_val_len                     ;
 
-       __thread       uint32_t   shf_put_expires           = 9   ; /* Put will expire after this many seconds */
+       __thread       uint32_t   shf_put_expires           = 0   ; /* Put will expire after this many seconds */
+       __thread       uint32_t   shf_put_mode              = 0   ; /* Put mode = 0 add key, = 1 replace key */
 
 static __thread const char     * shf_key                         ; /* used by shf_make_hash() */
 static __thread       uint32_t   shf_key_len                     ; /* used by shf_make_hash() */
@@ -510,8 +511,10 @@ shf_make_hash(
     /* todo: examine if file append & remap is faster than remap & direct memory access */ \
     /* todo: consider special mode with is write only, e.g. for initial startup? */ \
     /* todo: faster to use remap_file_pages() instead of multiple mmap()s? */ \
+    { \
     uint64_t data_needed    = sizeof(SHF_DATA_TYPE) + LEN_LEN + KEY_LEN + LEN_LEN + val_len; \
     uint64_t data_available = TAB_MMAP->tab_size - TAB_MMAP->tab_used; \
+    char done = 0; \
     SHF_DEBUG("- appending %lu bytes for ref @ 0x%02x-xxx[%03x]-%03x-%x // key,value are %u,%u bytes @ pos %u // todo: use SHF_DATA_TYPE instead of hard coding\n", data_needed, win, TAB, row, ref, KEY_LEN, val_len, TAB_MMAP->tab_used); \
     SHF_LOCK_DEBUG_MACRO(&SHF->shf_mmap->wins[win].lock, 1); \
     if ((0 == LEN_LEN                    )    /* if ->is_fixed_key_val_len */ \
@@ -529,7 +532,7 @@ shf_make_hash(
         SHF_MEM_AT(TAB_MMAP, POS + sizeof(SHF_DATA_TYPE) + LEN_LEN + KEY_LEN + LEN_LEN, /* = */ val_len         , /* bytes at */ val); \
         } \
         TAB_MMAP->tab_data_free -= 1 + KEY_LEN + val_len; \
-        goto SKIP_APPEND_COS_REUSE; \
+        done = 1; \
     } else if (data_needed > data_available) { \
         SHF_LOCK_DEBUG_MACRO(&SHF->shf_mmap->wins[win].lock, 2); \
         uint64_t new_tab_size = SHF_MOD_PAGE(TAB_MMAP->tab_size + (data_needed * shf_data_needed_factor)); \
@@ -558,28 +561,30 @@ shf_make_hash(
         TAB_MMAP->tab_size           = new_tab_size; \
         SHF->tabs[win][TAB].tab_size = new_tab_size; \
     } \
-    SHF_ASSERT(TAB_MMAP->tab_used+1+LEN_LEN+KEY_LEN                 <= TAB_MMAP->tab_size, "INTERNAL: expected key < %u but pos is %u at win %u, tab %u; key_len %u\n", TAB_MMAP->tab_size, TAB_MMAP->tab_used+1+LEN_LEN+KEY_LEN                , win, TAB, KEY_LEN          ); \
-    SHF_ASSERT(TAB_MMAP->tab_used+1+LEN_LEN+KEY_LEN+LEN_LEN+val_len <= TAB_MMAP->tab_size, "INTERNAL: expected val < %u but pos is %u at win %u, tab %u; xxx_len %u\n", TAB_MMAP->tab_size, TAB_MMAP->tab_used+1+LEN_LEN+KEY_LEN+LEN_LEN+val_len, win, TAB, KEY_LEN + val_len); \
-    SHF_DATA_TYPE data_type; \
-                  data_type.as_type.key_type = SHF_KEY_TYPE_KEY_IS_STR32; \
-                  data_type.as_type.val_type = SHF_KEY_TYPE_VAL_IS_STR32; \
-    SHF_U08_AT(TAB_MMAP, TAB_MMAP->tab_used                                                               )    =    data_type.as_u08; \
-    if (0 == LEN_LEN) { \
-        /* store key value *without* size data */ \
+    if(!done) { \
+        SHF_ASSERT(TAB_MMAP->tab_used+1+LEN_LEN+KEY_LEN                 <= TAB_MMAP->tab_size, "INTERNAL: expected key < %u but pos is %u at win %u, tab %u; key_len %u\n", TAB_MMAP->tab_size, TAB_MMAP->tab_used+1+LEN_LEN+KEY_LEN                , win, TAB, KEY_LEN          ); \
+        SHF_ASSERT(TAB_MMAP->tab_used+1+LEN_LEN+KEY_LEN+LEN_LEN+val_len <= TAB_MMAP->tab_size, "INTERNAL: expected val < %u but pos is %u at win %u, tab %u; xxx_len %u\n", TAB_MMAP->tab_size, TAB_MMAP->tab_used+1+LEN_LEN+KEY_LEN+LEN_LEN+val_len, win, TAB, KEY_LEN + val_len); \
+        SHF_DATA_TYPE data_type; \
+                        data_type.as_type.key_type = SHF_KEY_TYPE_KEY_IS_STR32; \
+                        data_type.as_type.val_type = SHF_KEY_TYPE_VAL_IS_STR32; \
+        SHF_U08_AT(TAB_MMAP, TAB_MMAP->tab_used                                                               )    =    data_type.as_u08; \
+        if (0 == LEN_LEN) { \
+            /* store key value *without* size data */ \
+        } \
+        else { \
+            /* store key value *with* sizesdata */ \
+        SHF_U32_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE)                                       )    =    KEY_LEN         ; \
+        SHF_U32_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE) + LEN_LEN + KEY_LEN                   )    =    val_len         ; \
+        } \
+        SHF_MEM_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE) + LEN_LEN                             , /* = */ KEY_LEN         , /* bytes at */ KEY); \
+        if (val) { \
+        SHF_MEM_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE) + LEN_LEN + KEY_LEN + LEN_LEN         , /* = */ val_len         , /* bytes at */ val); \
+        } \
+        TAB_MMAP->tab_used += data_needed; \
     } \
-    else { \
-        /* store key value *with* sizesdata */ \
-    SHF_U32_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE)                                       )    =    KEY_LEN         ; \
-    SHF_U32_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE) + LEN_LEN + KEY_LEN                   )    =    val_len         ; \
-    } \
-    SHF_MEM_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE) + LEN_LEN                             , /* = */ KEY_LEN         , /* bytes at */ KEY); \
-    if (val) { \
-    SHF_MEM_AT(TAB_MMAP, TAB_MMAP->tab_used + sizeof(SHF_DATA_TYPE) + LEN_LEN + KEY_LEN + LEN_LEN         , /* = */ val_len         , /* bytes at */ val); \
-    } \
-    TAB_MMAP->tab_used += data_needed; \
-    SKIP_APPEND_COS_REUSE:; \
     TAB_MMAP->tab_refs_used ++; \
-    TAB_MMAP->tab_data_used += data_needed;
+    TAB_MMAP->tab_data_used += data_needed; \
+    }
 
 #define SHF_TAB_REF_MARK_AS_DELETED(TAB_MMAP, LEN_LEN) \
     uint32_t old_pos = TAB_MMAP->tab_data_free_pos; \
@@ -598,7 +603,6 @@ shf_make_hash(
     TAB_MMAP->tab_data_free += 1 + LEN_LEN + key_len + LEN_LEN + val_len; \
     /* mark ref in old tab as unused */ \
     TAB_MMAP->row[row].ref[ref].pos = 0; \
-    TAB_MMAP->row[row].ref[ref].expires = 0; \
     TAB_MMAP->tab_refs_used --;
 
 #define SHF_TAB_REF_COPY(LEN_LEN) \
@@ -758,6 +762,10 @@ shf_tab_part(SHF * shf, uint32_t win, uint16_t tab_old)
     shf_tab_shrink(shf, win, tab_old);
 } /* shf_tab_part() */
 
+void       shf_replace_instead_of_put () {
+    shf_put_mode = 1;
+}
+
 uint32_t /* SHF_UID; SHF_UID_NONE means something went wrong and key not appended */
 shf_put_key_val(
     SHF        * shf    ,
@@ -791,6 +799,43 @@ SHF_NEED_NEW_TAB_AFTER_PARTING:;
     SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
 
     uint32_t now = shf_get_monotronic_clock();
+
+    if (shf_put_mode) {
+        shf_put_mode = 0;
+        for (uint32_t ref = 0; ref < SHF_REFS_PER_ROW; ref ++) {
+            if (tab_mmap->row[row].ref[ref].pos
+            &&  (tab_mmap->row[row].ref[ref].rnd == rnd )
+            &&  (tab_mmap->row[row].ref[ref].tab == tab2)
+            ) {
+                uid.as_part.win = win;
+                uid.as_part.tab = tab2;
+                uid.as_part.row = row;
+                uid.as_part.ref = ref;
+                uint32_t okl =  0 == len_len ? shf->fixed_key_len :                         SHF_U32_AT(tab_mmap, tab_mmap->row[row].ref[ref].pos+1 ) ;
+                uint32_t ovl =  0 == len_len ? shf->fixed_val_len :                         SHF_U32_AT(tab_mmap, tab_mmap->row[row].ref[ref].pos+1+len_len+okl ) ;
+                if( okl == shf_key_len && ovl == shf_val_len ) {
+                    //Just replace value
+                    SHF_MEM_AT(tab_mmap, tab_mmap->row[row].ref[ref].pos + sizeof(SHF_DATA_TYPE) + len_len + len_len + okl, ovl, shf_val);
+                } else {
+                    SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
+                    uint32_t      pos       ;
+                    {
+                        uint32_t      key_len   ;
+                        pos              =  tab_mmap->row[row].ref[ref].pos; SHF_ASSERT(pos < tab_mmap->tab_size, "INTERNAL: expected pos < %u but pos is %u at win %u, tab %u\n", tab_mmap->tab_size, pos, win, tab);
+                        if (0 == len_len) { key_len = shf->fixed_key_len         ; val_len =  shf->fixed_val_len                         ; }
+                        else              { key_len = SHF_U32_AT(tab_mmap, pos+1); val_len =  SHF_U32_AT(tab_mmap, pos+1+len_len+key_len); }
+                        SHF_TAB_REF_MARK_AS_DELETED(tab_mmap, len_len);
+                    }
+                    pos = tab_mmap->tab_used;
+                    SHF_TAB_APPEND(shf, tab, tab_mmap, len_len, shf_key, shf_key_len, pos);
+                    SHF_LOCK_DEBUG_LINE(&shf->shf_mmap->wins[win].lock);
+                    tab_mmap->row[row].ref[ref].pos = pos;
+                }
+                tab_mmap->row[row].ref[ref].expires = shf_put_expires ? shf_put_expires + now : 0;
+                goto SHF_SKIP_ROW_FULL_CHECK;
+            }
+        }
+    }
 
     for (uint32_t ref = 0; ref < SHF_REFS_PER_ROW; ref ++) {
         if (tab_mmap->row[row].ref[ref].pos && (!tab_mmap->row[row].ref[ref].expires || tab_mmap->row[row].ref[ref].expires>now) ) {

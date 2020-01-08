@@ -122,6 +122,18 @@ SharedHashFile::PutKeyVal(
     return shf_put_key_val(shf, val, val_len);
 }
 
+uint32_t
+SharedHashFile::ReplaceKeyVal(
+    const char * val    ,
+    uint32_t     val_len,
+    uint32_t     expires)
+{
+    shf_set_expires( expires );
+    shf_replace_instead_of_put();
+    SHF_DEBUG("%s(val=?, val_len=%u)\n", __FUNCTION__, val_len);
+    return shf_put_key_val(shf, val, val_len);
+}
+
 bool
 SharedHashFile::DelKeyVal()
 {
