@@ -26,7 +26,9 @@ CXXFLAGS        = -c -g -W -Waggregate-return -Wall -Werror -Wcast-align -Wcast-
 CXXFLAGS       += -Wcomment -Wformat -Wmissing-declarations -Wparentheses -Wpointer-arith -Wredundant-decls
 CXXFLAGS       +=  -Wreturn-type -Wshadow -Wswitch -Wtrigraphs -Wwrite-strings -O
 CXXFLAGS       += -fno-inline-functions-called-once -fPIC -Wuninitialized -Wunused -march=x86-64 -I. -Isrc
+CXXFLAGS       += -Wno-address-of-packed-member
 CFLAGS          = -Wimplicit -Wmissing-prototypes -Wnested-externs -Wstrict-prototypes -std=gnu99
+CFLAGS         += -Wno-address-of-packed-member
 ifneq ($(filter debug,$(MAKECMDGOALS)),)
 BUILD_TYPE      = debug
 CXXFLAGS       += -DSHF_DEBUG_VERSION

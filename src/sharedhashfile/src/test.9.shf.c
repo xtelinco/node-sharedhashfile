@@ -114,6 +114,7 @@ int main(void)
         uint32_t test_qs          = 3;
         uint32_t test_q_items     = 10;
         uint32_t test_q_item_size = 4096;
+    
         ok(      0               == shf_q_is_ready(shf                                            ), "c: shf_q_is_ready()           not ready    as expected");
         ok(      NULL            != shf_q_new     (shf, test_qs, test_q_items, test_q_item_size, 1), "c: shf_q_new()                returned     as expected"); /* e.g. q items created  by process a */
         ok(      1               == shf_q_is_ready(shf                                            ), "c: shf_q_is_ready()               ready    as expected");

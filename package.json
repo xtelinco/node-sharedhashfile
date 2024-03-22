@@ -1,13 +1,13 @@
 {
     "name": "sharedhashfile",
-    "description": "Bindings for the SharedHashFile Library to the Node.JS world.",
+    "description": "1Bindings for the SharedHashFile Library to the Node.JS world.",
     "version": "0.1.1",
     "contributors": [],
     "keywords": [],
     "license": "AGPL-3.0-or-later",
     "scripts": {
-        "compile": "make -C src/sharedhashfile && node-gyp rebuild",
-        "install": "make -C src/sharedhashfile && node-gyp rebuild",
+        "compile": "SHF_SKIP_TESTS=1 make -C src/sharedhashfile && node-gyp rebuild",
+        "install": "SHF_SKIP_TESTS=1 make -C src/sharedhashfile && node-gyp rebuild && node-gyp install",
         "start": "node main.js"
     },
     "engines": {
